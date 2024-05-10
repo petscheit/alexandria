@@ -116,6 +116,19 @@ pub fn verify(
     storage_value
 }
 
+// Verify a generic starknet MPT proof. Returns the decoded value is the proof is valid.
+pub fn verify_mpt(
+    expected_root: felt252,
+    key: felt252,
+    proof: Array<TrieNode>
+) -> felt252 {
+
+    let (root_hash, value) = traverse(key, proof);
+    assert(expected_root == root_hash, 'wrong commitment');
+
+    value
+}
+
 fn traverse(expected_path: felt252, proof: Array<TrieNode>) -> (felt252, felt252) {
     let mut nodes = proof.span();
     let expected_path_u256: u256 = expected_path.into();
@@ -124,6 +137,8 @@ fn traverse(expected_path: felt252, proof: Array<TrieNode>) -> (felt252, felt252
         TrieNode::Binary(_) => panic!("expected Edge got Leaf"),
         TrieNode::Edge(edge) => edge
     };
+
+
 
     let mut expected_hash = node_hash(@TrieNode::Edge(leaf));
     let value = leaf.child;
@@ -136,15 +151,15 @@ fn traverse(expected_path: felt252, proof: Array<TrieNode>) -> (felt252, felt252
                 match node {
                     TrieNode::Binary(binary_node) => {
                         if expected_path_u256 & path_length_pow2.into() > 0 {
-                            assert(expected_hash == *binary_node.right, 'invalid node hash');
+                            assert(expected_hash == *binary_node.right, 'invalid node hash - 1');
                             path += path_length_pow2;
                         } else {
-                            assert(expected_hash == *binary_node.left, 'invalid node hash');
+                            assert(expected_hash == *binary_node.left, 'invalid node hash - 2');
                         };
                         path_length_pow2 *= 2;
                     },
                     TrieNode::Edge(edge_node) => {
-                        assert(expected_hash == *edge_node.child, 'invalid node hash');
+                        assert(expected_hash == *edge_node.child, 'invalid node hash - 3');
                         path += *edge_node.path * path_length_pow2;
                         path_length_pow2 *= pow(2, *edge_node.length);
                     }

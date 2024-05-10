@@ -1,8 +1,8 @@
 use alexandria_merkle_tree::storage_proof::{
-    ContractStateProof, ContractData, TrieNode, BinaryNode, EdgeNode, verify
+    ContractStateProof, ContractData, TrieNode, BinaryNode, EdgeNode, verify, verify_mpt
 };
 
-use alexandria_merkle_tree::tests::storage_proof_test_data::{balance_proof, total_balance_proof};
+use alexandria_merkle_tree::tests::storage_proof_test_data::{balance_proof, total_balance_proof, generic_proof};
 
 const DAI: felt252 = 0x00da114221cb83fa859dbdb4c44beeaa0bb37c7537ad5ae66fe5e0efd20e6eb3;
 const ETH: felt252 = 0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7;
@@ -55,4 +55,14 @@ fn total_balance_lsb_proof_test() {
     let proof = total_balance_proof();
     let value = verify(state_commitment, contract_address, storage_address, proof);
     assert_eq!(expected_value, value, "wrong value");
+}
+
+#[test]
+#[available_gas(50000000)]
+fn generic_mpt_verify() {
+    let key = 0x004C4FB1AB068F6039D5780C68DD0FA2F8742CCEB3426D19667778CA7F3518A9;
+    let root = 0x04D7B8EE66D4B58F887A5CD237D4CE032F12D4F97D54DC6D9C029F6F2AEFD82F;
+    let proof = generic_proof();
+    let value = verify_mpt(root, key, proof);
+    assert_eq!(18, value, "wrong value");
 }
