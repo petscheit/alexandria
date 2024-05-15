@@ -1,6 +1,7 @@
 use core::hash::HashStateTrait;
 use core::pedersen::PedersenTrait;
 use core::poseidon::PoseidonTrait;
+use core::integer;
 
 #[derive(Drop, Serde)]
 pub struct BinaryNode {
@@ -41,6 +42,17 @@ pub struct ContractData {
     nonce: felt252,
     contract_state_hash_version: felt252,
     storage_proof: Array<TrieNode>
+}
+#[derive(Destruct, Drop, PartialEq)]
+pub enum Membership{
+    Included: felt252,
+    NotIncluded
+}
+
+enum TraverseRes {
+    Invalid,
+    Included,
+    NotIncluded
 }
 
 #[generate_trait]
@@ -116,17 +128,81 @@ pub fn verify(
     storage_value
 }
 
-// Verify a generic starknet MPT proof. Returns the decoded value is the proof is valid.
-pub fn verify_mpt(
-    expected_root: felt252,
+// Verify a generic starknet MPT proof. This function uses downward traversing, allowing non-inclusion to be verified aswell. 
+pub fn verify_mpt_proof(
+    root: felt252,
     key: felt252,
-    proof: Array<TrieNode>
-) -> felt252 {
+    proof: Array<TrieNode>,
+) -> Option<Membership> {
+    traverse_downward(root, key, proof)
+}
 
-    let (root_hash, value) = traverse(key, proof);
-    assert(expected_root == root_hash, 'wrong commitment');
+// This function hashes through the proof path, starting at the root and ending at the leaf. This enables the verification of Non-Inclusion proofs.
+fn traverse_downward(root: felt252, key: felt252, proof: Array<TrieNode>) -> Option<Membership> {
+    let mut nodes = proof.span();
+    let mut expected_hash = root;
+    let mut remaining_path: u256 = key.into();
 
-    value
+    let mut i = 0;
+    let mut offset = 0;
+    let res = loop {
+        if i == proof.len(){
+            break TraverseRes::Included;
+        }
+        match nodes.get(i) {
+            Option::Some(node) => {
+                if(expected_hash != node_hash(node.unbox())) {
+                    break TraverseRes::Invalid;
+                }
+
+                match node.unbox() {
+                    TrieNode::Binary(binary_node) => {
+                        let depth: u8 = (250 - (i + offset)).try_into().unwrap();
+                        let devisor: u256 = pow(2, depth).into();
+                        let d: NonZero<u256> = devisor.try_into().unwrap();
+                        let (q, r) = DivRem::div_rem(remaining_path, d);
+                        if q > 0 {
+                            expected_hash = *binary_node.right;
+                        } else {
+                            expected_hash = *binary_node.left;
+                        }
+                        remaining_path = r;
+                    },
+                    TrieNode::Edge(edge_node) => {
+                        let depth: u8 = (251 - (i + offset)).try_into().unwrap();
+                        let devisor: u256 = pow(2, depth - *edge_node.length).into();
+                        let d: NonZero<u256> = devisor.try_into().unwrap();
+                        let (q, r) = DivRem::div_rem(remaining_path, d);
+                        let path: u256 = (*edge_node.path).into();
+
+                        if path != q {
+                            break TraverseRes::NotIncluded;
+                        }
+
+                        expected_hash = *edge_node.child;
+                        remaining_path = r;
+                        let len = *edge_node.length - 1;
+                        let len1: u32 = len.into();
+                        offset = offset +  len1;
+                    }
+                }
+            },
+            Option::None => { break TraverseRes::Included; }
+        }
+        i = i + 1;
+    };
+
+    match res {
+        TraverseRes::Invalid => Option::None,
+        TraverseRes::NotIncluded => Option::Some(Membership::NotIncluded),
+        TraverseRes::Included => {
+            if remaining_path != 0 {
+                return Option::None;
+            } else {
+                return Option::Some(Membership::Included(expected_hash));
+            }
+        }
+    }
 }
 
 fn traverse(expected_path: felt252, proof: Array<TrieNode>) -> (felt252, felt252) {
@@ -137,8 +213,6 @@ fn traverse(expected_path: felt252, proof: Array<TrieNode>) -> (felt252, felt252
         TrieNode::Binary(_) => panic!("expected Edge got Leaf"),
         TrieNode::Edge(edge) => edge
     };
-
-
 
     let mut expected_hash = node_hash(@TrieNode::Edge(leaf));
     let value = leaf.child;
