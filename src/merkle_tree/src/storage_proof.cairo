@@ -137,6 +137,23 @@ pub fn verify_mpt_proof(
     traverse_downward(root, key, proof)
 }
 
+pub fn verify_leaf_update(
+    root: felt252,
+    key: felt252,
+    proof_pre: Array<TrieNode>,
+    proof_post: Array<TrieNode>,
+) -> Option<(felt252, felt252)> {
+    let res = traverse_downward(root, key, proof_pre);
+
+    match res {
+        Option::None => { return Option::None; },
+        Option::Some(_) => {}
+    }
+
+    let (root_post, value) = traverse(key, proof_post);
+    Option::Some((root_post, value))
+}
+
 // This function hashes through the proof path, starting at the root and ending at the leaf. This enables the verification of Non-Inclusion proofs.
 fn traverse_downward(root: felt252, key: felt252, proof: Array<TrieNode>) -> Option<Membership> {
     let mut nodes = proof.span();
